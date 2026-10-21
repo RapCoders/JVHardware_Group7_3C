@@ -1,0 +1,5 @@
+# Hide folder listings and block direct web access to the SQL/text files
+Options -Indexes
+<FilesMatch "\.(sql|txt|md)$">
+  Require all denied
+</FilesMatch>
