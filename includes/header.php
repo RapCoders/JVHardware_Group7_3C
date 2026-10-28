@@ -35,7 +35,7 @@ $nav = [
   <div class="side-foot">
     <div class="side-user">
       <span class="avatar"><?= e(strtoupper(substr($user['full_name'], 0, 1))) ?></span>
-      <div><b><?= e($user['full_name']) ?></b><small><?= $user['role'] === 'owner' ? 'Store owner' : 'Staff' ?></small></div>
+      <div><b><?= e($user['full_name']) ?></b><small>Store owner</small></div>
     </div>
     <a class="logout" href="logout.php" title="Log out"><?= icon('logout') ?><span>Log out</span></a>
   </div>

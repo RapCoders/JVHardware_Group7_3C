@@ -19,6 +19,15 @@ function money_short($n) {
 function num($n) { return number_format((int)$n); }
 function now() { return date('Y-m-d H:i:s'); }
 function next_day($d) { return date('Y-m-d', strtotime($d . ' +1 day')); }
+function valid_iso_date($value) {
+    if (!is_string($value) || !preg_match('/^\d{4}-\d{2}-\d{2}$/D', $value)) return false;
+    $date = DateTimeImmutable::createFromFormat('!Y-m-d', $value);
+    return $date instanceof DateTimeImmutable && $date->format('Y-m-d') === $value;
+}
+function csv_safe_cell($value) {
+    $value = (string)$value;
+    return $value !== '' && preg_match('/^[\x00-\x20]*[=+\-@]/', $value) ? "'" . $value : $value;
+}
 function fmt_dt($s) { return $s ? date('M j, Y · g:i A', strtotime($s)) : '—'; }
 function fmt_d($s) { return $s ? date('M j, Y', strtotime($s)) : '—'; }
 function icon($name, $cls = '') { return '<svg class="i ' . e($cls) . '" aria-hidden="true"><use href="#i-' . e($name) . '"/></svg>'; }
@@ -78,7 +87,7 @@ function current_user() {
 }
 function require_login() { if (!current_user()) redirect('login.php'); }
 function is_owner() { $u = current_user(); return $u && $u['role'] === 'owner'; }
-/* can('prices') = owner, or staff the owner authorised to manage products/prices */
+/* The single owner account has full access. */
 function can($perm) {
     $u = current_user();
     if (!$u) return false;

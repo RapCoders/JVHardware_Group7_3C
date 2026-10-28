@@ -51,7 +51,7 @@ $pageTitle = 'Dashboard'; $active = 'dashboard';
 require __DIR__ . '/includes/header.php';
 ?>
 <div class="page-head dashboard-heading">
-  <div><h2>Dashboard Overview</h2><p><?= $greet ?>, <?= e($firstName) ?>. Here is how the store is doing today.</p></div>
+  <div><h2>Store Summary</h2><p><?= $greet ?>, <?= e($firstName) ?>. Here is how the store is doing today.</p></div>
   <div class="actions no-print">
     <a class="btn line" href="export.php?type=sales&amp;from=<?= e($from7) ?>&amp;to=<?= e($today) ?>"><?= icon('download') ?> Export report</a>
     <a class="btn primary" href="sales.php"><?= icon('cart') ?> New sale</a>

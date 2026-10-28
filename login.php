@@ -21,38 +21,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = 'Wrong username or password.';
     }
 }
-// Show the first-time hint only while the owner still uses the default password.
-$showHint = false;
-$o = db_q("SELECT password_hash FROM users WHERE username='owner'")->fetch();
-if ($o && password_verify('admin123', $o['password_hash'])) $showHint = true;
 ?>
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Sign in · JV Hardware</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@700&family=Roboto:wght@400;500;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@700;800;900&family=Roboto:wght@400;500;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="assets/style.css?v=<?= (int) filemtime(__DIR__ . '/assets/style.css') ?>"></head>
 <body>
 <?php include __DIR__ . '/includes/icons.php'; ?>
+<div class="login-datetime" aria-label="Current date and time"><span id="login-date"></span><i></i><strong id="login-time"></strong></div>
 <div class="login">
   <section class="login-art" aria-label="About JV Hardware">
     <a class="login-brand" href="login.php" aria-label="JV Hardware home">
       <img src="assets/jv-hardware-logo.png" alt="JV Hardware — Build, Repair, Improve">
     </a>
     <div class="login-promo">
-      <h2>Know your stock.<br><em class="typewriter" aria-label="Sell Faster"><span class="typewriter-text" aria-hidden="true"></span><span class="sr-only">Sell Faster</span></em></h2>
-      <p>A simple inventory and sales system built for a local<br class="desktop-break"> hardware store — no more notebook counting.</p>
-      <ul>
-        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 12 5 5L20 6"/></svg><span>Stock updates automatically with every sale</span></li>
-        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 12 5 5L20 6"/></svg><span>Low-stock alerts before items run out</span></li>
-        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 12 5 5L20 6"/></svg><span>Clear daily and monthly sales reports</span></li>
-      </ul>
+      <h2>Know your<br>stock.<br><em class="typewriter" aria-label="Sell fast."><span class="typewriter-text" aria-hidden="true"></span><span class="sr-only">Sell fast.</span></em></h2>
+      <p>Our store’s inventory and sales system. Every sale updates the shelf count, so there’s no more notebook counting.</p>
     </div>
   </section>
   <div class="login-form">
     <div class="login-card">
-      <h1>Login</h1>
+      <h1>Welcome Back!</h1>
       <p class="sub2">Access your account to continue.</p>
       <?php if ($error): ?><div class="err-box"><?= e($error) ?></div><?php endif; ?>
       <form method="post" autocomplete="off">
@@ -70,14 +62,9 @@ if ($o && password_verify('admin123', $o['password_hash'])) $showHint = true;
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/><path class="eye-slash" d="m3 3 18 18"/></svg>
           </button>
         </label>
+        <label class="remember-me"><input type="checkbox" name="remember_me"><span>Remember me</span></label>
         <button class="btn primary lg login-submit" type="submit"><span>Log In</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 5l7 7-7 7"/></svg></button>
       </form>
-      <div class="login-divider" aria-hidden="true"><span></span><b>or</b><span></span></div>
-      <p class="signup-prompt">Don't have an account? <a href="#account-help" aria-controls="account-help" aria-expanded="false">Sign Up</a></p>
-      <p class="account-help" id="account-help" hidden>Accounts are created by the store owner. Please ask them to add your account.</p>
-      <?php if ($showHint): ?>
-        <div class="callout" style="margin-top:18px"><?= icon('alert') ?><div><b>First time here?</b><br>Username <b>owner</b> · Password <b>admin123</b>.<br>Change it in Settings after signing in.</div></div>
-      <?php endif; ?>
     </div>
   </div>
 </div>
@@ -102,20 +89,21 @@ loginForm.addEventListener('keydown', function (event) {
     loginForm.querySelectorAll('input').forEach(function (field) { field.removeAttribute('readonly'); });
   }
 });
-document.querySelector('.signup-prompt a').addEventListener('click', function () {
-  var help = document.getElementById('account-help');
-  help.hidden = !help.hidden;
-  this.setAttribute('aria-expanded', String(!help.hidden));
-});
-// Keep the full phrase in the layout while the visible text types and deletes.
+function updateLoginClock() {
+  var now = new Date();
+  document.getElementById('login-date').textContent = new Intl.DateTimeFormat('en-US', {weekday:'long', month:'long', day:'numeric', year:'numeric'}).format(now);
+  document.getElementById('login-time').textContent = new Intl.DateTimeFormat('en-US', {hour:'2-digit', minute:'2-digit'}).format(now);
+}
+updateLoginClock();
+window.setInterval(updateLoginClock, 30000);
+// Loop the highlighted phrase while reserving its full width to keep the hero still.
 (function () {
   var target = document.querySelector('.typewriter-text');
   if (!target) return;
-  var phrase = 'Sell Faster';
+  var phrase = 'Sell fast.';
   var position = 0;
   var deleting = false;
-  var reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  if (reducedMotion) {
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
     target.textContent = phrase;
     return;
   }
@@ -127,12 +115,12 @@ document.querySelector('.signup-prompt a').addEventListener('click', function ()
     }
     if (deleting && position === 0) {
       deleting = false;
-      window.setTimeout(tick, 300);
+      window.setTimeout(tick, 350);
       return;
     }
     position += deleting ? -1 : 1;
     target.textContent = phrase.slice(0, position);
-    window.setTimeout(tick, deleting ? 50 : 100);
+    window.setTimeout(tick, deleting ? 55 : 95);
   }
   tick();
 })();

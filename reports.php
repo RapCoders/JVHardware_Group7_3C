@@ -15,8 +15,8 @@ switch ($range) {
     case 'month':     $from = date('Y-m-01'); $to = $today; break;
     default:
         $from = $_GET['from'] ?? date('Y-m-01'); $to = $_GET['to'] ?? $today;
-        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $from)) $from = date('Y-m-01');
-        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $to)) $to = $today;
+        if (!valid_iso_date($from)) $from = date('Y-m-01');
+        if (!valid_iso_date($to)) $to = $today;
         if (isset($_GET['from']) || isset($_GET['to'])) $range = 'custom'; else $range = 'month';
 }
 if ($from > $to) { $t = $from; $from = $to; $to = $t; }
@@ -32,7 +32,31 @@ if ($tab === 'sales') {
     $pay = db_q("SELECT payment_method, COUNT(*) AS c, SUM(subtotal) AS t FROM sales WHERE status='completed' AND sold_at>=? AND sold_at<? GROUP BY payment_method ORDER BY t DESC", [$start, $end])->fetchAll();
     $top = db_q("SELECT si.product_name, SUM(si.quantity) AS qty, SUM(si.line_total) AS rev FROM sale_items si JOIN sales s ON s.id=si.sale_id
         WHERE s.status='completed' AND s.sold_at>=? AND s.sold_at<? GROUP BY si.product_id, si.product_name ORDER BY rev DESC LIMIT 8", [$start, $end])->fetchAll();
-    $sales = db_q("SELECT s.*, (SELECT COALESCE(SUM(quantity),0) FROM sale_items WHERE sale_id=s.id) AS items FROM sales s WHERE s.sold_at>=? AND s.sold_at<? ORDER BY s.sold_at DESC LIMIT 500", [$start, $end])->fetchAll();
+    // Keep transaction browsing independent from report totals, with a searchable
+    // and paginated list so older receipts remain reachable on busy days.
+    $salesSearchInput = $_GET['q'] ?? '';
+    $salesQuery = mb_substr(trim(is_string($salesSearchInput) ? $salesSearchInput : ''), 0, 100);
+    $salesStatus = in_array($_GET['status'] ?? '', ['completed', 'voided'], true) ? $_GET['status'] : '';
+    $salesPayment = in_array($_GET['payment'] ?? '', ['Cash', 'GCash'], true) ? $_GET['payment'] : '';
+    $salesWhere = ['s.sold_at>=?', 's.sold_at<?'];
+    $salesArgs = [$start, $end];
+    if ($salesQuery !== '') {
+        $salesWhere[] = '(s.receipt_no LIKE ? OR s.customer_name LIKE ?)';
+        $salesArgs[] = '%' . $salesQuery . '%';
+        $salesArgs[] = '%' . $salesQuery . '%';
+    }
+    if ($salesStatus !== '') { $salesWhere[] = 's.status=?'; $salesArgs[] = $salesStatus; }
+    if ($salesPayment !== '') { $salesWhere[] = 's.payment_method=?'; $salesArgs[] = $salesPayment; }
+    $salesWhereSql = implode(' AND ', $salesWhere);
+    $salesTotal = (int)db_q('SELECT COUNT(*) FROM sales s WHERE ' . $salesWhereSql, $salesArgs)->fetchColumn();
+    $salesPageSize = 25;
+    $salesPages = max(1, (int)ceil($salesTotal / $salesPageSize));
+    $salesPage = min($salesPages, max(1, (int)($_GET['sales_page'] ?? 1)));
+    $salesOffset = ($salesPage - 1) * $salesPageSize;
+    $sales = db_q("SELECT s.*, (SELECT COALESCE(SUM(quantity),0) FROM sale_items WHERE sale_id=s.id) AS items FROM sales s WHERE $salesWhereSql ORDER BY s.sold_at DESC, s.id DESC LIMIT $salesPageSize OFFSET $salesOffset", $salesArgs)->fetchAll();
+    $salesPageUrl = function ($page) use ($qs, $salesQuery, $salesStatus, $salesPayment) {
+        return 'reports.php?' . $qs(['q' => $salesQuery, 'status' => $salesStatus, 'payment' => $salesPayment, 'sales_page' => $page]);
+    };
     // per-day chart for ranges up to 31 days
     $days = (int)((strtotime($to) - strtotime($from)) / 86400) + 1; $chart = [];
     if ($days <= 31) {
@@ -105,7 +129,15 @@ require __DIR__ . '/includes/header.php';
 </div>
 
 <section class="card report-transactions">
-  <div class="card-head"><div><h2>Sales transactions</h2><p><?= count($sales) >= 500 ? 'Showing the latest 500.' : 'Click a receipt to view or reprint it.' ?></p></div></div>
+  <div class="card-head"><div><h2>Sales transactions</h2><p><?= $salesTotal ? 'Showing ' . num($salesOffset + 1) . '–' . num($salesOffset + count($sales)) . ' of ' . num($salesTotal) . ' · click a receipt to view or reprint it.' : 'Search receipts by number or customer.' ?></p></div>
+    <form method="get" class="toolbar sales-filter" style="margin:0">
+      <input type="hidden" name="tab" value="sales"><input type="hidden" name="from" value="<?= e($from) ?>"><input type="hidden" name="to" value="<?= e($to) ?>">
+      <div class="input-ico" style="min-width:190px"><?= icon('search') ?><input type="search" name="q" value="<?= e($salesQuery) ?>" maxlength="100" placeholder="Receipt or customer…"></div>
+      <select name="status" aria-label="Sale status"><option value="">All statuses</option><option value="completed" <?= $salesStatus === 'completed' ? 'selected' : '' ?>>Completed</option><option value="voided" <?= $salesStatus === 'voided' ? 'selected' : '' ?>>Voided</option></select>
+      <select name="payment" aria-label="Payment method"><option value="">All payments</option><?php foreach (['Cash', 'GCash'] as $method): ?><option value="<?= e($method) ?>" <?= $salesPayment === $method ? 'selected' : '' ?>><?= e($method) ?></option><?php endforeach; ?></select>
+      <button class="btn line sm">Search</button>
+    </form>
+  </div>
   <div class="table-wrap"><table><thead><tr><th>Receipt</th><th>Date &amp; time</th><th>Customer</th><th>Payment</th><th class="num">Items</th><th class="num">Total</th><th></th></tr></thead><tbody>
   <?php if (!$sales): ?><tr><td colspan="7" class="empty">No sales in this period.</td></tr><?php endif; ?>
   <?php foreach ($sales as $s): ?>
@@ -114,6 +146,11 @@ require __DIR__ . '/includes/header.php';
       <td class="num"><?= num($s['items']) ?></td><td class="num"><strong><?= money($s['subtotal']) ?></strong></td>
       <td class="right"><?= $s['status'] === 'voided' ? '<span class="pill out">Voided</span>' : '' ?></td></tr>
   <?php endforeach; ?></tbody></table></div>
+  <?php if ($salesPages > 1): ?><nav class="pagination" aria-label="Sales transaction pages">
+    <?php if ($salesPage > 1): ?><a class="btn sm line" href="<?= e($salesPageUrl($salesPage - 1)) ?>">← Previous</a><?php else: ?><span class="btn sm line" aria-disabled="true">← Previous</span><?php endif; ?>
+    <span>Page <?= num($salesPage) ?> of <?= num($salesPages) ?></span>
+    <?php if ($salesPage < $salesPages): ?><a class="btn sm line" href="<?= e($salesPageUrl($salesPage + 1)) ?>">Next →</a><?php else: ?><span class="btn sm line" aria-disabled="true">Next →</span><?php endif; ?>
+  </nav><?php endif; ?>
 </section>
 
 <?php elseif ($tab === 'inventory'): ?>

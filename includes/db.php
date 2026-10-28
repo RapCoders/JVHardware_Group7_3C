@@ -6,7 +6,7 @@
  */
 require_once __DIR__ . '/config.php';
 date_default_timezone_set('Asia/Manila');
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 function jv_connect($db = null)
 {
@@ -65,12 +65,13 @@ function jv_install($pdo)
     jv_add_column($pdo, 'sales', 'void_reason', 'VARCHAR(255) NULL');
     jv_add_column($pdo, 'sales', 'voided_at', 'DATETIME NULL');
     $pdo->exec("ALTER TABLE stock_movements MODIFY movement_type ENUM('IN','OUT','SALE','VOID') NOT NULL");
-    // 3) default accounts
+    // 3) keep a single owner account; remove legacy staff logins.
     if ((int)$pdo->query('SELECT COUNT(*) FROM users')->fetchColumn() === 0) {
         $ins = $pdo->prepare('INSERT INTO users(username,full_name,password_hash,role,can_edit_prices) VALUES(?,?,?,?,?)');
         $ins->execute(['owner', 'Virginia Betuin', password_hash('admin123', PASSWORD_DEFAULT), 'owner', 1]);
-        $ins->execute(['staff', 'Store Staff', password_hash('staff123', PASSWORD_DEFAULT), 'staff', 0]);
     }
+    $pdo->exec("DELETE FROM users WHERE role='staff'");
+    $pdo->exec("ALTER TABLE users MODIFY role ENUM('owner') NOT NULL DEFAULT 'owner'");
     // 4) opening stock history for the sample products
     if ((int)$pdo->query('SELECT COUNT(*) FROM stock_movements')->fetchColumn() === 0) {
         $st = $pdo->prepare("INSERT INTO stock_movements(product_id,movement_type,quantity,note,balance_after,created_at) SELECT id,'IN',quantity,'Opening stock',quantity,? FROM products WHERE quantity>0");

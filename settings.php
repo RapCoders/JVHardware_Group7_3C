@@ -30,28 +30,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         redirect('settings.php');
     }
 
-    if ($action === 'user') {
-        $id = (int)($_POST['id'] ?? 0);
-        $username = strtolower(trim($_POST['username'] ?? ''));
-        $full = trim($_POST['full_name'] ?? '');
-        $role = ($_POST['role'] ?? 'staff') === 'owner' ? 'owner' : 'staff';
-        $prices = isset($_POST['can_edit_prices']) ? 1 : 0;
-        $active = isset($_POST['is_active']) ? 1 : 0;
-        $pw = $_POST['password'] ?? '';
-        if (!preg_match('/^[a-z0-9._-]{3,30}$/', $username) || $full === '') { flash('Enter a full name and a username (3–30 letters or numbers, no spaces).', 'err'); redirect('settings.php'); }
-        if ($id === 0 && strlen($pw) < 6) { flash('Give the new account a password of at least 6 characters.', 'err'); redirect('settings.php'); }
-        if ($pw !== '' && strlen($pw) < 6) { flash('Passwords need at least 6 characters.', 'err'); redirect('settings.php'); }
-        if ($id === (int)$me['id']) { $role = 'owner'; $active = 1; }   // you cannot lock yourself out
-        try {
-            if ($id > 0) {
-                db_q('UPDATE users SET username=?,full_name=?,role=?,can_edit_prices=?,is_active=? WHERE id=?', [$username, $full, $role, $prices, $active, $id]);
-                if ($pw !== '') db_q('UPDATE users SET password_hash=? WHERE id=?', [password_hash($pw, PASSWORD_DEFAULT), $id]);
-                flash('Account updated.');
-            } else {
-                db_q('INSERT INTO users(username,full_name,password_hash,role,can_edit_prices,is_active,created_at) VALUES(?,?,?,?,?,?,?)', [$username, $full, password_hash($pw, PASSWORD_DEFAULT), $role, $prices, $active, now()]);
-                flash('Account created. Share the username and password with ' . $full . '.');
+    if ($action === 'gcash') {
+        $accountName = trim($_POST['gcash_name'] ?? '');
+        $accountNumber = trim($_POST['gcash_number'] ?? '');
+        if (mb_strlen($accountName) > 100 || mb_strlen($accountNumber) > 30 || ($accountNumber !== '' && !preg_match('/^[0-9+() -]{7,30}$/', $accountNumber))) {
+            flash('Enter a valid GCash account name and number.', 'err'); redirect('settings.php');
+        }
+        $qrPath = setting('gcash_qr');
+        $upload = $_FILES['gcash_qr'] ?? null;
+        if ($upload && $upload['error'] !== UPLOAD_ERR_NO_FILE) {
+            if ($upload['error'] !== UPLOAD_ERR_OK || (int)$upload['size'] > 5 * 1024 * 1024) {
+                flash('The QR image must be no larger than 5 MB.', 'err'); redirect('settings.php');
             }
-        } catch (PDOException $e) { flash($e->getCode() === '23000' ? 'That username is already taken.' : 'Could not save the account.', 'err'); }
+            $image = @getimagesize($upload['tmp_name']);
+            $types = [IMAGETYPE_PNG => 'png', IMAGETYPE_JPEG => 'jpg', IMAGETYPE_WEBP => 'webp'];
+            if (!$image || !isset($types[$image[2]])) {
+                flash('Upload a valid PNG, JPG, or WebP GCash QR image.', 'err'); redirect('settings.php');
+            }
+            $fileName = 'gcash-qr-' . bin2hex(random_bytes(8)) . '.' . $types[$image[2]];
+            $target = __DIR__ . '/assets/' . $fileName;
+            if (!move_uploaded_file($upload['tmp_name'], $target)) {
+                flash('The GCash QR image could not be saved.', 'err'); redirect('settings.php');
+            }
+            $qrPath = 'assets/' . $fileName;
+        }
+        save_setting('gcash_name', $accountName);
+        save_setting('gcash_number', $accountNumber);
+        save_setting('gcash_qr', $qrPath);
+        flash('GCash payment details saved.');
         redirect('settings.php');
     }
 
@@ -60,7 +66,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (count($prods) < 3) { flash('Add a few products first.', 'err'); redirect('settings.php'); }
         $pdo->beginTransaction();
         try {
-            $methods = ['Cash', 'Cash', 'Cash', 'GCash', 'Cash', 'Bank Transfer'];
+            $methods = ['Cash', 'Cash', 'Cash', 'GCash', 'Cash', 'GCash'];
             $custs = ['', '', '', 'Mang Rodel', 'Aling Nena', 'Kuya Jun', '', 'Engr. Dela Cruz'];
             mt_srand(7);
             for ($d = 29; $d >= 0; $d--) {
@@ -99,7 +105,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     redirect('settings.php');
 }
 
-$users = is_owner() ? db_q('SELECT * FROM users ORDER BY role, full_name')->fetchAll() : [];
 $demoCount = is_owner() ? (int)db_q("SELECT COUNT(*) FROM sales WHERE receipt_no LIKE 'DEMO-%'")->fetchColumn() : 0;
 
 $pageTitle = 'Settings'; $active = 'settings';
@@ -129,23 +134,21 @@ require __DIR__ . '/includes/header.php';
       <div class="full form-foot" style="margin-top:0"><button class="btn primary" type="submit">Save details</button></div>
     </form>
   </section>
+  <section class="card">
+    <div class="card-head"><div><h2>GCash payment details</h2><p>Shown to the cashier when GCash is selected for a sale.</p></div></div>
+    <form method="post" class="form-grid" enctype="multipart/form-data">
+      <?= csrf_field() ?><input type="hidden" name="action" value="gcash">
+      <label class="f full">Account name<input type="text" name="gcash_name" maxlength="100" value="<?= e(setting('gcash_name')) ?>" placeholder="Name registered with GCash"></label>
+      <label class="f full">GCash number<input type="tel" name="gcash_number" maxlength="30" value="<?= e(setting('gcash_number')) ?>" placeholder="09XX XXX XXXX"></label>
+      <label class="f full">GCash QR code<input type="file" name="gcash_qr" accept="image/png,image/jpeg,image/webp"><small>PNG, JPG, or WebP, up to 5 MB. Leave empty to keep the current QR.</small></label>
+      <?php if (setting('gcash_qr')): ?><div class="full"><img class="gcash-settings-qr" src="<?= e(setting('gcash_qr')) ?>" alt="Current GCash QR code"></div><?php endif; ?>
+      <div class="full form-foot" style="margin-top:0"><button class="btn primary" type="submit">Save GCash details</button></div>
+    </form>
+  </section>
   <?php endif; ?>
 </div>
 
 <?php if (is_owner()): ?>
-<section class="card" style="margin-top:18px">
-  <div class="card-head"><div><h2>Staff accounts</h2><p>Staff can record sales and add stock. Tick “Can edit products &amp; prices” for trusted staff.</p></div>
-    <button class="btn primary" id="add-user"><?= icon('plus') ?> Add account</button></div>
-  <div class="table-wrap"><table><thead><tr><th>Name</th><th>Username</th><th>Role</th><th>Permissions</th><th>Status</th><th></th></tr></thead><tbody>
-  <?php foreach ($users as $u): $j = e(json_encode(['id' => (int)$u['id'], 'username' => $u['username'], 'full_name' => $u['full_name'], 'role' => $u['role'], 'prices' => (int)$u['can_edit_prices'], 'active' => (int)$u['is_active'], 'self' => (int)$u['id'] === (int)$me['id']])); ?>
-    <tr><td><strong><?= e($u['full_name']) ?></strong></td><td class="muted"><?= e($u['username']) ?></td>
-      <td><span class="pill <?= $u['role'] === 'owner' ? 'info' : 'plain' ?>"><?= $u['role'] === 'owner' ? 'Owner' : 'Staff' ?></span></td>
-      <td class="muted"><?= $u['role'] === 'owner' ? 'Full access' : ((int)$u['can_edit_prices'] ? 'Sales, stock in, edit products &amp; prices' : 'Sales and stock in') ?></td>
-      <td><span class="pill <?= $u['is_active'] ? 'ok' : 'neutral' ?>"><?= $u['is_active'] ? 'Active' : 'Disabled' ?></span></td>
-      <td class="right"><button class="btn sm line user-edit" data-u="<?= $j ?>"><?= icon('edit') ?> Edit</button></td></tr>
-  <?php endforeach; ?></tbody></table></div>
-</section>
-
 <section class="card" style="margin-top:18px">
   <div class="card-head"><div><h2>Demo data</h2><p>For presentations: fill the dashboard and reports with 30 days of sample sales. Real stock is not touched, and you can remove the sample sales any time.</p></div></div>
   <form method="post" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><?= csrf_field() ?>
@@ -154,36 +157,5 @@ require __DIR__ . '/includes/header.php';
     <?php if ($demoCount): ?><span class="pill info"><?= $demoCount ?> sample sales currently in the system</span><?php endif; ?></form>
 </section>
 
-<dialog id="user-dialog">
-  <div class="dlg-head"><h2 id="u-title">Add account</h2><button class="icon-btn" data-close aria-label="Close"><?= icon('x') ?></button></div>
-  <form method="post" class="dlg-body" autocomplete="off">
-    <?= csrf_field() ?><input type="hidden" name="action" value="user"><input type="hidden" name="id" id="u-id" value="0">
-    <div class="form-grid">
-      <label class="f">Full name<input type="text" name="full_name" id="u-full" maxlength="100" required></label>
-      <label class="f">Username<input type="text" name="username" id="u-user" maxlength="30" required></label>
-      <label class="f full"><span id="u-pw-label">Password</span><input type="password" name="password" id="u-pw" minlength="6" autocomplete="new-password"><small id="u-pw-hint"></small></label>
-      <label class="f">Role<select name="role" id="u-role"><option value="staff">Staff</option><option value="owner">Owner</option></select></label>
-      <div class="f" style="justify-content:end;gap:10px"><label class="check"><input type="checkbox" name="can_edit_prices" id="u-prices"> Can edit products &amp; prices</label>
-        <label class="check"><input type="checkbox" name="is_active" id="u-active" checked> Account is active</label></div>
-    </div>
-    <div class="form-foot"><button type="button" class="btn ghost" data-close>Cancel</button><button class="btn primary" type="submit">Save account</button></div>
-  </form>
-</dialog>
-<script>
-(function () {
-  var $ = function (i) { return document.getElementById(i); }, d = $('user-dialog');
-  function open(u) {
-    $('u-id').value = u ? u.id : 0; $('u-title').textContent = u ? 'Edit account' : 'Add account';
-    $('u-full').value = u ? u.full_name : ''; $('u-user').value = u ? u.username : ''; $('u-pw').value = ''; $('u-pw').required = !u;
-    $('u-pw-label').textContent = u ? 'New password' : 'Password'; $('u-pw-hint').textContent = u ? 'Leave empty to keep the current password.' : 'At least 6 characters.';
-    $('u-role').value = u ? u.role : 'staff'; $('u-prices').checked = u ? !!u.prices : false; $('u-active').checked = u ? !!u.active : true;
-    $('u-role').disabled = $('u-active').disabled = !!(u && u.self);
-    // disabled controls are not submitted; the server keeps owner/active for your own account
-    d.showModal(); setTimeout(function () { $('u-full').focus(); }, 30);
-  }
-  $('add-user').addEventListener('click', function () { open(null); });
-  document.querySelectorAll('.user-edit').forEach(function (b) { b.addEventListener('click', function () { open(JSON.parse(b.dataset.u)); }); });
-})();
-</script>
 <?php endif; ?>
 <?php require __DIR__ . '/includes/footer.php'; ?>

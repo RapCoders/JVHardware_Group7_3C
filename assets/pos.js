@@ -63,6 +63,7 @@
   function totals() {
     var t = total(), isCash = method() === 'Cash', paidEl = $('paid');
     $('cash-box').classList.toggle('hide', !isCash);
+    $('gcash-box').classList.toggle('hide', isCash);
     $('t-items').textContent = count(); $('t-total').textContent = money(t);
     $('mb-items').textContent = count() + ' item' + (count() === 1 ? '' : 's'); $('mb-total').textContent = money(t);
     var paid = parseFloat(paidEl.value) || 0, ok = t > 0;
@@ -105,6 +106,19 @@
   });
   $('clear').addEventListener('click', function () { if (count() && confirm('Clear the whole cart?')) { cart = {}; render(); } });
   document.querySelectorAll('input[name=payment_method]').forEach(function (r) { r.addEventListener('change', totals); });
+  var copyGcash = $('copy-gcash-number');
+  if (copyGcash) copyGcash.addEventListener('click', function () {
+    var number = copyGcash.dataset.number;
+    function copied() { copyGcash.textContent = 'Copied'; setTimeout(function () { copyGcash.textContent = 'Copy number'; }, 1600); }
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(number).then(copied).catch(function () { JV.toast('Could not copy the GCash number.', 'err'); });
+    else {
+      var field = document.createElement('textarea'); field.value = number; field.style.position = 'fixed'; field.style.opacity = '0';
+      document.body.appendChild(field); field.select();
+      try { if (document.execCommand('copy')) copied(); else JV.toast('Could not copy the GCash number.', 'err'); }
+      catch (error) { JV.toast('Could not copy the GCash number.', 'err'); }
+      field.remove();
+    }
+  });
   $('paid').addEventListener('input', totals);
   document.querySelector('.quickpay').addEventListener('click', function (e) {
     var b = e.target.closest('button'); if (!b) return;

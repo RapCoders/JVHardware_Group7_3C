@@ -32,8 +32,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!can('prices')) { flash('You are not allowed to change products. Ask the owner for access.', 'err'); redirect('products.php'); }
         $id = (int)($_POST['id'] ?? 0);
         $d = parse_product_post();
-        if ($d['name'] === '' || $d['price'] === false || $d['price'] < 0 || $d['reorder'] === false || $d['reorder'] < 0 || $d['qty'] === false || $d['qty'] < 0) {
-            flash('Please check the details: name is required and numbers cannot be negative.', 'err'); redirect('products.php');
+        if ($d['name'] === '' || mb_strlen($d['name']) > 150 || mb_strlen($d['sku']) > 50 || mb_strlen($d['category']) > 100 || mb_strlen($d['unit']) > 30
+            || $d['price'] === false || !is_finite((float)$d['price']) || $d['price'] < 0 || $d['price'] > 99999999.99
+            || $d['reorder'] === false || $d['reorder'] < 0 || $d['reorder'] > 2147483647
+            || $d['qty'] === false || $d['qty'] < 0 || $d['qty'] > 2147483647) {
+            flash('Please check the details: product fields must fit their limits, and prices and quantities must be valid non-negative numbers.', 'err'); redirect('products.php');
         }
         global $pdo;
         try {
@@ -90,7 +93,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $map = [];
         foreach ($head as $i => $h) { $k = strtolower(trim($h)); if (isset($alias[$k])) $map[$alias[$k]] = $i; }
         if (!isset($map['name']) || !isset($map['price'])) { flash('The CSV needs at least "name" and "price" columns. Download the template to see the format.', 'err'); redirect('products.php'); }
-        $added = 0; $skipped = 0; $bad = 0; $n = 0;
+        $added = 0; $skipped = 0; $bad = 0; $n = 0; $truncated = false;
         $pdo->beginTransaction();
         try {
             while (($row = fgetcsv($fh)) !== false && $n < 2000) {
@@ -109,8 +112,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     [(int)$pdo->lastInsertId(), $qty, 'Opening stock (CSV import)', current_user()['id'], $qty, now()]);
                 $added++;
             }
+            $truncated = $n >= 2000 && fgetcsv($fh) !== false;
             $pdo->commit();
-            flash("Import finished: $added added" . ($skipped ? ", $skipped skipped (code already exists)" : '') . ($bad ? ", $bad rows had errors" : '') . '.', $added ? 'ok' : 'err');
+            flash("Import finished: $added added" . ($skipped ? ", $skipped skipped (code already exists)" : '') . ($bad ? ", $bad rows had errors" : '') . ($truncated ? '; only the first 2,000 rows were processed' : '') . '.', $added ? 'ok' : 'err');
         } catch (Throwable $e) {
             if ($pdo->inTransaction()) $pdo->rollBack();
             flash('Import failed. Nothing was saved. Please check the file.', 'err');

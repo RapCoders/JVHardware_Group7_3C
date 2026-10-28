@@ -8,8 +8,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $customer = mb_substr(trim($_POST['customer_name'] ?? ''), 0, 150);
     $payment = $_POST['payment_method'] ?? 'Cash';
     $paid = filter_var($_POST['amount_paid'] ?? 0, FILTER_VALIDATE_FLOAT);
-    if (!is_array($cart) || !count($cart) || !in_array($payment, ['Cash', 'GCash', 'Bank Transfer', 'Other'], true)) {
+    if (!is_array($cart) || !count($cart)) {
         flash('Add at least one item to the sale.', 'err'); redirect('sales.php');
+    }
+    if (!in_array($payment, ['Cash', 'GCash'], true)) {
+        flash('Choose Cash or GCash as the payment method.', 'err'); redirect('sales.php');
     }
     global $pdo;
     $saleId = 0;
@@ -66,6 +69,9 @@ foreach ($products as &$p) { $p['id'] = (int)$p['id']; $p['quantity'] = (int)$p[
 unset($p);
 $cats = array_values(array_unique(array_column($products, 'category')));
 sort($cats);
+$gcashName = setting('gcash_name');
+$gcashNumber = setting('gcash_number');
+$gcashQr = setting('gcash_qr');
 $today = date('Y-m-d');
 $td = db_q("SELECT COUNT(*) AS c, COALESCE(SUM(subtotal),0) AS t FROM sales WHERE status='completed' AND sold_at>=? AND sold_at<?", [$today . ' 00:00:00', next_day($today) . ' 00:00:00'])->fetch();
 
@@ -99,9 +105,18 @@ require __DIR__ . '/includes/header.php';
     <div class="cart-foot">
       <label class="f">Customer<input type="text" name="customer_name" maxlength="150" placeholder="Walk-in customer (optional)"></label>
       <div class="seg" id="pay">
-        <?php foreach (['Cash', 'GCash', 'Bank Transfer', 'Other'] as $i => $m): ?>
-          <label><input type="radio" name="payment_method" value="<?= $m ?>" <?= $i === 0 ? 'checked' : '' ?>><span><?= $m === 'Bank Transfer' ? 'Bank' : $m ?></span></label>
+        <?php foreach (['Cash', 'GCash'] as $i => $m): ?>
+          <label><input type="radio" name="payment_method" value="<?= $m ?>" <?= $i === 0 ? 'checked' : '' ?>><span><?= $m ?></span></label>
         <?php endforeach; ?>
+      </div>
+      <div class="gcash-payment hide" id="gcash-box" aria-live="polite">
+        <?php if ($gcashQr): ?><img class="gcash-payment-qr" src="<?= e($gcashQr) ?>" alt="GCash QR code for <?= e($gcashName ?: 'the store') ?>"><?php endif; ?>
+        <div class="gcash-payment-details">
+          <?php if ($gcashName): ?><strong><?= e($gcashName) ?></strong><?php endif; ?>
+          <?php if ($gcashNumber): ?><span>GCash number: <b><?= e($gcashNumber) ?></b></span><button type="button" class="btn sm line" id="copy-gcash-number" data-number="<?= e($gcashNumber) ?>">Copy number</button><?php endif; ?>
+          <?php if (!$gcashQr && !$gcashName && !$gcashNumber): ?><span>GCash details are not set up yet. An owner can add the QR code and account details in Settings.</span><?php endif; ?>
+          <small>Confirm the payment has arrived before completing the sale.</small>
+        </div>
       </div>
       <div id="cash-box">
         <label class="f">Cash received (₱)<input type="number" id="paid" min="0" step="0.01" inputmode="decimal" placeholder="0.00"></label>

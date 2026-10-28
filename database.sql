@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS users (
  username VARCHAR(50) NOT NULL UNIQUE,
  full_name VARCHAR(100) NOT NULL,
  password_hash VARCHAR(255) NOT NULL,
- role ENUM('owner','staff') NOT NULL DEFAULT 'staff',
+ role ENUM('owner') NOT NULL DEFAULT 'owner',
  can_edit_prices TINYINT(1) NOT NULL DEFAULT 0,
  is_active TINYINT(1) NOT NULL DEFAULT 1,
  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP

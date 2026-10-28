@@ -8,13 +8,12 @@ HOW TO RUN (3 steps, no importing needed)
 3. Open your browser and go to:  http://localhost/JV_Hardware_Inventory_System/
 
 The first time you open it, the system creates the database, the tables,
-sample products and the login accounts BY ITSELF. You do not need phpMyAdmin.
+sample products and the owner login BY ITSELF. You do not need phpMyAdmin.
 (If you already used the older version, your products and sales are kept and
 upgraded automatically.)
 
 LOGIN
   Owner :  username  owner   password  admin123
-  Staff :  username  staff   password  staff123
 Change the passwords in  Settings  after your first login.
 
 WHAT THE SYSTEM DOES  (matches the proposal)
@@ -25,10 +24,8 @@ WHAT THE SYSTEM DOES  (matches the proposal)
   Sales reports ........... Reports: today / week / month / custom dates, top products, payment methods, CSV and Print
   Receipts ................ Printable receipt after every sale; owner can void a sale (stock is returned)
 
-WHO CAN DO WHAT
-  Owner .... everything, including staff accounts, stock out, count corrections, voiding sales, archiving products
-  Staff .... record sales, stock in, view reports
-  Staff with "Can edit products & prices" ticked by the owner can also add products and change prices
+ACCOUNT ACCESS
+  The system uses one owner account with full access. Change its password in Settings after your first login.
 
 DAY-TO-DAY USE
   Record Sale ...... tap products (or type / scan the code and press Enter), type the cash received, press Complete sale
